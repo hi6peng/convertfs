@@ -25,7 +25,7 @@ mkdir -p $fs2root || exit
 
 echo "== Creating clone of filesystem's device =="
 mount $dev $fs1root || exit
-./devclone $dev $fsimage || exit
+devclone $dev $fsimage || exit
 losetup $loopdev $fsimage || exit
 
 echo "===== Creating destination filesystem ====="

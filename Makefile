@@ -1,6 +1,6 @@
 CFLAGS=-g -Wall -O3
 
-all: devclone devremap prepindex
+all: devclone devremap prepindex ftwmv
 	sync
 
 devclone: devclone.c
@@ -12,5 +12,8 @@ devremap: devremap.c convertfs.h
 prepindex: prepindex.c convertfs.h
 	$(CC) -o prepindex prepindex.c $(CFLAGS)
 
+ftwmv: ftwmv.c
+	gcc -o ftwmv ftwmv.c $(CFLAGS)
+
 clean:
-	rm -f *.o devclone devremap prepindex core
+	rm -f *.o devclone devremap prepindex ftwmv core

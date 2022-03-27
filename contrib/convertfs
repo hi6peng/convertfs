@@ -218,7 +218,8 @@ ls -1A $fs1root | while read file; do
 	   [ "x$file" != "x$fsindex_name" ] &&
 	   [ "x$file" != "xlost+found" ] &&
 	   [ "x$file" != "x$fssuper_name" ]; then
-		mv -f "$fs1root/$file" "$fs2root/" || error
+		#mv -f "$fs1root/$file" "$fs2root/" || error
+		ftwmv "$fs1root/$file" "$fs2root/$file" || error
 	fi
 done
 ls -lA $fs2root

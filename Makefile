@@ -13,7 +13,7 @@ prepindex: prepindex.c convertfs.h
 	$(CC) -o prepindex prepindex.c $(CFLAGS)
 
 ftwmv: ftwmv.c
-	gcc -o ftwmv ftwmv.c $(CFLAGS)
+	$(CC) -o ftwmv ftwmv.c $(CFLAGS)
 
 clean:
 	rm -f *.o devclone devremap prepindex ftwmv core

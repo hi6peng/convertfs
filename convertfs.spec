@@ -49,7 +49,7 @@ lzcat %{SOURCE1} > README
 %build
 %if %{build_diet}
     # OE: use the power of dietlibc
-    for i in devclone devremap prepindex; do
+    for i in devclone devremap prepindex ftwmv; do
 	diet gcc -s -static -o $i $i.c -Os
     done	
 %else
@@ -63,6 +63,7 @@ install -d %{buildroot}/sbin
 install -m755 devclone %{buildroot}/sbin/
 install -m755 devremap %{buildroot}/sbin/
 install -m755 prepindex %{buildroot}/sbin/
+install -m755 ftwmv %{buildroot}/sbin/
 
 %clean
 [ -n "%{buildroot}" -a "%{buildroot}" != / ] && rm -rf %{buildroot}
@@ -73,6 +74,7 @@ install -m755 prepindex %{buildroot}/sbin/
 /sbin/devclone
 /sbin/devremap
 /sbin/prepindex
+/sbin/ftwmv
 
 
 

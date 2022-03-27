@@ -1,0 +1,61 @@
+#!/bin/sh
+#
+# This is developer version.
+# See contrib/convertfs for user-friendly version.
+#
+
+# device to convert
+dev=/dev/hda3
+
+loopdev=/dev/loop7
+
+tmpbase=/convertfs
+fs1root=$tmpbase/fs1root
+fs2root=$tmpbase/fs2root
+
+fsimage_name=fsimage
+fsindex_name=fsindex
+fssuper_name=fssuper
+fsimage=$fs1root/$fsimage_name
+fsindex=$fs1root/$fsindex_name
+fssuper=$tmpbase/$fssuper_name
+
+mkdir -p $fs1root || exit
+mkdir -p $fs2root || exit
+
+echo "== Creating clone of filesystem's device =="
+mount $dev $fs1root || exit
+./devclone $dev $fsimage || exit
+losetup $loopdev $fsimage || exit
+
+echo "===== Creating destination filesystem ====="
+#mkfs.xfs $loopdev || exit
+#mkfs.jfs -q $loopdev || exit
+mkreiserfs $loopdev || exit
+
+echo "============== Moving files ==============="
+mount $loopdev $fs2root || exit
+for file in `ls -1A $fs1root`; do
+	if [ "x$file" != "x$fsimage_name" ] &&
+	   [ "x$file" != "x$fsindex_name" ] &&
+	   [ "x$file" != "xlost+found" ] &&
+	   [ "x$file" != "x$fssuper_name" ]; then
+		mv -f $fs1root/$file $fs2root/ || exit
+	fi
+done
+ls -lA $fs2root
+df -h $fs2root
+umount $loopdev || exit
+losetup -d $loopdev || exit
+
+echo "=== Preparing info for block relocation ==="
+./prepindex $fsimage $fsindex $fssuper || exit
+ls -l $fs1root
+umount $dev || exit
+dd if=$fssuper of=$dev || exit
+sync
+
+echo "============ Relocating blocks ============"
+./devremap $dev || exit
+
+echo "=== Filesystem conversion accomplished! ==="

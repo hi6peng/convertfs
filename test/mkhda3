@@ -1,0 +1,10 @@
+#!/bin/sh
+
+dev=/dev/hda3
+
+umount $dev
+mkfs.ext2 $dev
+mount $dev /convertfs
+#cp -a /var/log /convertfs
+cp -a /usr /convertfs
+umount $dev

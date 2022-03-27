@@ -1,0 +1,233 @@
+#!/bin/sh
+#
+#  Contributed by Kent Robotti <robotti@godmail.com>
+#  Fixes by Paul Cunnane <paul@cunnane.net>
+#
+
+
+usage() {
+echo "
+=============================================================
+convertfs v1.3
+
+Convert filesystem on device from this type to this type.
+
+Usage: convertfs device from_fs_type to_fs_type
+
+Filesystem types: minix xfs jfs reiserfs ext2 ext3
+
+Example: convertfs /dev/hda2 ext2 reiserfs
+=============================================================
+"
+exit 0
+}
+
+fs_types() {
+unset fs_type
+for fs_type in minix xfs jfs reiserfs ext2 ext3; do
+if [ "$1" = "$fs_type" ]; then
+  fs_type=yes
+  break
+fi
+done
+if [ ! "$fs_type" = "yes" ]; then
+  echo "Not a filesystem type \`$1' option."
+  echo "Filesystem types: minix xfs jfs reiserfs ext2 ext3"
+  exit 1
+fi
+}
+
+minix_convert() {
+if [ "$1" = "minix" ]; then
+  hd_dev=`echo $2 | cut -b 1-8`
+  blocks=`fdisk -l $hd_dev | grep $2 | tr -d + | tr -s " " | cut -d ' ' -f 4`
+  if [ "$blocks" -gt "2048287" ]; then
+    echo "The \`minix' partition on \`$2' is more than 2GB."
+    echo "It's probably to big to convert."
+    echo -n "Try anyway? [N/y] "
+    read ans
+    if [ ! "$ans" = "y" -a ! "$ans" = "Y" ]; then
+      exit 1
+    fi
+  fi
+fi
+}
+
+ext2_convert() {
+if [ "$1" = "ext2" -a "$2" = "ext3" ]; then
+  echo "You can convert \`$3' to \`$2' this way."
+  echo "tune2fs -j $3"
+  exit
+elif [ "$1" = "ext3" -a "$2" = "ext2" ]; then
+  echo "You can convert \`$3' to \`$2' this way."
+  echo "tune2fs -O ^has_journal $3"
+  exit
+fi
+}
+
+find_mkfs() {
+if ! grep -q "$1" /proc/filesystems; then
+  echo "No support for \`$1' filesystem in the kernel."
+  echo "If it's a module load it \`modprobe $1'."
+  exit 1
+elif ! grep -q "$2" /proc/filesystems; then
+  echo "No support for \`$2' filesystem in the kernel."
+  echo "If it's a module load it \`modprobe $2'."
+  exit 1
+fi
+
+if ! type $3 1>/dev/null 2>/dev/null; then
+  echo "Can't find \`$3' on the system."
+  exit 1
+fi
+
+if [ "$2" = "reiserfs" ]; then
+  kernel_version=`uname -r | tr -d . | cut -b 1-2` 
+  mkreiserfs 1>/dev/null 2>/tmp/mkreiserfs.out
+if grep -q "\--format" /tmp/mkreiserfs.out; then
+if [ "$kernel_version" -ge "24" ]; then
+  reiserfs_version="--format 3.6"
+else
+  reiserfs_version="--format 3.5"
+fi
+else
+if [ "$kernel_version" -ge "24" ]; then
+  reiserfs_version="-v 2"
+else
+  reiserfs_version="-v 1"
+fi
+fi
+  rm -f /tmp/mkreiserfs.out
+fi
+}
+
+mk_fs() {
+if [ "$1" = "ext2" ]; then
+  mke2fs $2
+elif [ "$1" = "ext3" ]; then
+  mke2fs -j $2
+elif [ "$1" = "reiserfs" ]; then
+  echo -e "y\ny" | mkreiserfs $reiserfs_version $2
+elif [ "$1" = "jfs" ]; then
+  mkfs.jfs -f $2
+elif [ "$1" = "xfs" ]; then
+  mkfs.xfs -f $2
+elif [ "$1" = "minix" ]; then
+  hd_dev=`echo $dev | cut -b 1-8`
+  blocks=`fdisk -l $hd_dev | grep $dev | tr -d + | tr -s " " | cut -d ' ' -f 4`
+  mkfs.minix -v $2 $blocks
+fi
+}
+
+error() {
+  umount $loopdev 2>/dev/null
+  losetup -d $loopdev 2>/dev/null
+  umount $dev 2>/dev/null
+  rm -rf $tmp
+  exit 1
+}
+
+# device to convert
+dev=$1
+# filesystem to convert from
+from_fs_type=$2
+# filesystem to convert to
+to_fs_type=$3
+
+if [ "$dev" = "" ]; then
+  usage
+elif [ ! -b "$dev" ]; then
+  echo "No such device \`$dev'."
+  exit 1
+fi
+
+if [ "$from_fs_type" = "" -o "$to_fs_type" = "" ]; then
+  usage
+else
+  ext2_convert $from_fs_type $to_fs_type $dev
+  minix_convert $from_fs_type $dev
+  fs_types $from_fs_type
+  fs_types $to_fs_type
+fi
+
+if [ "$to_fs_type" = "ext2" ]; then
+  find_mkfs $from_fs_type $to_fs_type mke2fs
+elif [ "$to_fs_type" = "ext3" ]; then
+  find_mkfs $from_fs_type $to_fs_type mke2fs
+elif [ "$to_fs_type" = "reiserfs" ]; then
+  find_mkfs $from_fs_type $to_fs_type mkreiserfs
+elif [ "$to_fs_type" = "jfs" ]; then
+  find_mkfs $from_fs_type $to_fs_type mkfs.jfs
+elif [ "$to_fs_type" = "xfs" ]; then
+  find_mkfs $from_fs_type $to_fs_type mkfs.xfs
+elif [ "$to_fs_type" = "minix" ]; then
+  find_mkfs $from_fs_type $to_fs_type mkfs.minix
+fi
+  
+if ! grep -q "loop" /proc/devices; then
+  echo "No loop device support in the kernel."
+  echo "If it's a module load it \`modprobe loop'."
+  exit 1
+fi
+
+if [ ! -b /dev/loop7 ]; then
+  mknod -m 660 /dev/loop7 b 7 7 || exit
+fi
+
+loopdev=/dev/loop7
+
+tmp=/tmp/convertfs
+fs1root=$tmp/fs1root
+fs2root=$tmp/fs2root
+
+fsimage_name=fsimage
+fsindex_name=fsindex
+fssuper_name=fssuper
+fsimage=$fs1root/$fsimage_name
+fsindex=$fs1root/$fsindex_name
+fssuper=$tmp/$fssuper_name
+
+mkdir -p $fs1root || exit
+mkdir -p $fs2root || exit
+
+echo "== Creating clone of \`$from_fs_type' filesystem that's on \`$dev'. =="
+umount $dev 2>/dev/null
+mount -t $from_fs_type $dev $fs1root || error
+./devclone $dev $fsimage || error
+
+echo "===== Creating destination \`$to_fs_type' filesystem. ====="
+umount $loopdev 2>/dev/null
+losetup -d $loopdev 2>/dev/null
+losetup $loopdev $fsimage || error
+mk_fs $to_fs_type $loopdev || error
+
+echo "============== Copying files =============="
+mount -t $to_fs_type $loopdev $fs2root || error
+ls -1A $fs1root | while read file; do
+	if [ "x$file" != "x$fsimage_name" ] &&
+	   [ "x$file" != "x$fsindex_name" ] &&
+	   [ "x$file" != "xlost+found" ] &&
+	   [ "x$file" != "x$fssuper_name" ]; then
+		mv -f "$fs1root/$file" "$fs2root/" || error
+	fi
+done
+ls -lA $fs2root
+df -h $fs2root
+umount $loopdev || error
+losetup -d $loopdev 2>/dev/null
+
+echo "=== Preparing info for block relocation ==="
+./prepindex $fsimage $fsindex $fssuper || error
+umount $dev || error
+dd if=$fssuper of=$dev || exit
+sync
+
+echo "============ Relocating blocks ============"
+./devremap $dev || exit
+
+echo "=== Filesystem conversion accomplished! ==="
+rm -rf $tmp
+echo "NOTE: If you want to boot the new filesystem on \`$dev' you"
+echo "      should edit \`/etc/fstab' and add something like this."
+echo "      $dev   /   $to_fs_type   defaults   1   1"
+
